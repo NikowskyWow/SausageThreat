@@ -1,0 +1,37 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Update Version in TOC and LUA
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          sed -i "s/## Version: .*/## Version: $VERSION/" SausageSalva.toc
+          sed -i "s/local SAUSAGE_VERSION = \".*\"/local SAUSAGE_VERSION = \"v$VERSION\"/" SausageSalva.lua
+
+      - name: Create Zip
+        run: |
+          mkdir SausageSalva
+          cp SausageSalva.lua SausageSalva.toc SausageSalva
+          cp -r sound SausageSalva/
+          zip -r SausageSalva.zip SausageSalva
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: SausageSalva.zip
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
