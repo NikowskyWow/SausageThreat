@@ -4,7 +4,7 @@
 -- ============================================================================
 
 local addonName, addonTable = ...
-local SAUSAGE_VERSION = "v1.0.0" -- SEM SCRIPT DOPLNI VERZIU PODLA TAGU
+local SAUSAGE_VERSION = "Beta 0.9" -- SEM SCRIPT DOPLNI VERZIU PODLA TAGU
 local PREFIX = "SSALVA"
 local SALVA_SPELL_ID = 1038 -- Hand of Salvation
 local MISDIRECT_SPELL_ID = 34477 -- Misdirection
