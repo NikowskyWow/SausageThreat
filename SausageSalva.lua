@@ -87,21 +87,28 @@ local function UpdateAddonIdentity()
 end
 UpdateAddonIdentity()
 
-local function IsRaidLeader()
+local IsRaidLeader_Orig = IsRaidLeader
+local function IsRaidLeader_Check()
     if debugLeader then return true end
     return (GetNumRaidMembers() > 0 and IsRaidLeader_Orig()) or (GetNumPartyMembers() > 0 and not (GetNumRaidMembers() > 0) and IsPartyLeader())
 end
 
-local function IsRaidOfficer()
+local function IsRaidOfficer_Check()
     if debugLeader then return true end
     if GetNumRaidMembers() > 0 then
-        local _, rank = GetRaidRosterInfo(UnitInRaid("player"))
-        return rank >= 1
+        local myName = UnitName("player")
+        for i = 1, GetNumRaidMembers() do
+            local name, rank = GetRaidRosterInfo(i)
+            if name == myName then return rank >= 1 end
+        end
     end
     return false
 end
 
-local IsRaidLeader_Orig = IsRaidLeader
+-- Prepojenie volaní na naše nové checkery
+local IsRaidLeader = IsRaidLeader_Check
+local IsRaidOfficer = IsRaidOfficer_Check
+
 local function IsInRaid() return GetNumRaidMembers() > 0 end
 local function IsInGroup() return GetNumPartyMembers() > 0 or GetNumRaidMembers() > 0 end
 
@@ -329,13 +336,12 @@ local iconPala = CreateCustomIcon("IconSalva.tga", 0, 32)
 local iconHunt = CreateCustomIcon("IconMisdirect.tga", -28, -16)
 local iconRogue = CreateCustomIcon("IconTricks.tga", 28, -16)
 
--- Aura Ring (Zlatý okraj koláča pre prémiový vzhľad)
+-- Metallic Aura Ring (Čistý kovový vzhľad socketu)
 local aura = RadialMenu:CreateTexture(nil, "OVERLAY", nil, 5)
-aura:SetSize(148, 148)
+aura:SetSize(140, 140)
 aura:SetPoint("CENTER", 0, 0)
-aura:SetTexture("Interface\\SPELLBOOK\\UI-Spellbook-SpellHighlight")
-aura:SetBlendMode("ADD")
-aura:SetVertexColor(1, 0.9, 0.5, 0.4)
+aura:SetTexture("Interface\\ItemSocketingFrame\\UI-EmptySocket-Meta")
+aura:SetVertexColor(1, 1, 1, 0.6)
 
 RadialMenu.targetName = nil
 RadialMenu.currentHoveredClass = nil
@@ -510,10 +516,30 @@ local function CreateGridButtons()
 
         -- Čistý pulzujúci overlay efekt pre príkaz
         btn.pingHighlight = btn:CreateTexture(nil, "OVERLAY", nil, 7)
-        btn.pingHighlight:SetTexture("Interface\\Buttons\\WHITE8X8")
+        btn.pingHighlight:SetTexture("Interface\\Buttons\\CheckButtonHilight")
         btn.pingHighlight:SetAllPoints()
         btn.pingHighlight:SetBlendMode("ADD")
         btn.pingHighlight:Hide()
+
+        -- Nová vizuálna IKONA uprostred pingu
+        btn.pingIcon = btn:CreateTexture(nil, "OVERLAY", nil, 7)
+        btn.pingIcon:SetSize(30, 30)
+        btn.pingIcon:SetPoint("CENTER")
+        btn.pingIcon:SetBlendMode("ADD")
+        btn.pingIcon:Hide()
+
+        -- THREAT VÝKRIČNÍKY (Inverzne pulzujúce)
+        btn.warnLeft = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+        btn.warnLeft:SetPoint("RIGHT", btn.text, "LEFT", -2, -1)
+        btn.warnLeft:SetText("!!")
+        btn.warnLeft:SetTextColor(1, 0, 0)
+        btn.warnLeft:Hide()
+
+        btn.warnRight = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+        btn.warnRight:SetPoint("LEFT", btn.text, "RIGHT", 2, -1)
+        btn.warnRight:SetText("!!")
+        btn.warnRight:SetTextColor(1, 0, 0)
+        btn.warnRight:Hide()
 
         btn:SetAttribute("type1", "spell"); btn:SetAttribute("spell1", mySpellName or "")
         btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -575,11 +601,14 @@ UpdateCombatGrid = function(dt)
             if not isTestMode and unit then local _, class = UnitClass(unit); threshold = (class == "MAGE" or class == "WARLOCK" or class == "PRIEST") and 120 or 100 end
             local isTestFocus = isTestMode and (i == 5)
             
-            local hasSalva, activeIcon = false, nil
-            if isTestMode and (i == 3 or i == 7) then hasSalva = true 
+            local hasSalva, activeIcon, buffType = false, nil, nil
+            if isTestMode and (i == 3 or i == 7) then 
+                hasSalva = true; activeIcon = "Interface\\Icons\\Spell_Holy_SealOfSalvation"; buffType = "PALA"
             elseif unit and UnitExists(unit) then
                 local s, _, iconS = UnitBuff(unit, SALVA_NAME); local m, _, iconM = UnitBuff(unit, MISDIRECT_NAME); local t, _, iconT = UnitBuff(unit, TRICKS_NAME)
-                if s then hasSalva = true; activeIcon = iconS elseif m then hasSalva = true; activeIcon = iconM elseif t then hasSalva = true; activeIcon = iconT end
+                if s then hasSalva = true; activeIcon = iconS; buffType = "PALA" 
+                elseif m then hasSalva = true; activeIcon = iconM; buffType = "HUNT" 
+                elseif t then hasSalva = true; activeIcon = iconT; buffType = "ROGUE" end
             end
             if activeIcon then btn.icon:SetTexture(activeIcon); btn.icon:Show() else btn.icon:Hide() end
 
@@ -598,19 +627,48 @@ UpdateCombatGrid = function(dt)
                     elseif colorKey == "ROGUE" then r, g, b = 1.00, 0.96, 0.41 end
 
                     btn.bg:SetVertexColor(r * 0.3, g * 0.3, b * 0.3, 0.9)
-                    btn.pingHighlight:SetTexture("Interface\\Buttons\\CheckButtonHilight")
                     btn.pingHighlight:SetVertexColor(r, g, b, 0.4 + (pulse * 0.6))
                     btn.pingHighlight:Show()
+                    
+                    -- Zobrazenie PING ikony (Salva/MD/Tricks)
+                    local iconPath = "Interface\\Icons\\Spell_Holy_SealOfSalvation"
+                    if colorKey == "HUNT" then iconPath = "Interface\\Icons\\Ability_Hunter_Misdirection"
+                    elseif colorKey == "ROGUE" then iconPath = "Interface\\Icons\\Ability_Rogue_TricksOftheTrade" end
+                    btn.pingIcon:SetTexture(iconPath)
+                    btn.pingIcon:SetAlpha(0.3 + (pulse * 0.7))
+                    btn.pingIcon:Show()
                 else
                     btn.bg:SetVertexColor(0.1, 0.1, 0.1, 0.5)
                     btn.pingHighlight:Hide()
+                    btn.pingIcon:Hide()
                 end
             else
                 btn.pingHighlight:Hide()
-                if hasSalva then btn.bg:SetVertexColor(0.8 + (pulse * 0.2), 0.8 + (pulse * 0.2), 0.8 + (pulse * 0.2), 0.9)
-                elseif threatPct >= threshold then btn.bg:SetVertexColor(0.6 + (pulse * 0.4), 0, 0, 0.9)
-                elseif threatPct > 0 then btn.bg:SetVertexColor(0.2 + ((threatPct / threshold) * 0.6), 0.2, 0.2, 0.9)
-                else btn.bg:SetVertexColor(0.2, 0.2, 0.2, 0.9) end
+                btn.pingIcon:Hide()
+                if hasSalva then
+                    -- Aktívny buff: Jemné farebné pulzovanie podľa spellu
+                    local r, g, b = 1, 1, 1
+                    if buffType == "PALA" then r, g, b = 0.96, 0.55, 0.73
+                    elseif buffType == "HUNT" then r, g, b = 0.67, 0.83, 0.45
+                    elseif buffType == "ROGUE" then r, g, b = 1.00, 0.96, 0.41 end
+                    
+                    btn.bg:SetVertexColor(r * (0.15 + pulse * 0.15), g * (0.15 + pulse * 0.15), b * (0.15 + pulse * 0.15), 0.9)
+                    btn.pingHighlight:SetVertexColor(r, g, b, 0.1 + (pulse * 0.2))
+                    btn.pingHighlight:Show()
+                elseif threatPct >= threshold then 
+                    -- VYSOKÝ THREAT: Panic indikátor !!
+                    btn.bg:SetVertexColor(0.6 + (pulse * 0.4), 0, 0, 0.9)
+                    local invPulse = 1 - pulse
+                    btn.warnLeft:SetAlpha(0.2 + (invPulse * 0.8))
+                    btn.warnRight:SetAlpha(0.2 + (invPulse * 0.8))
+                    btn.warnLeft:Show(); btn.warnRight:Show()
+                elseif threatPct > 0 then 
+                    btn.warnLeft:Hide(); btn.warnRight:Hide()
+                    btn.bg:SetVertexColor(0.2 + ((threatPct / threshold) * 0.6), 0.2, 0.2, 0.9)
+                else 
+                    btn.warnLeft:Hide(); btn.warnRight:Hide()
+                    btn.bg:SetVertexColor(0.2, 0.2, 0.2, 0.9) 
+                end
             end
         end
     end
