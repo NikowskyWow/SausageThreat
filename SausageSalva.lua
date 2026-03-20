@@ -86,6 +86,17 @@ local function UpdateAddonIdentity()
     else
         mySoundPath = nil
     end
+
+    -- Dynamická aktualizácia atribútov tlačidiel
+    if not InCombatLockdown() then
+        for i = 1, 40 do
+            local btn = _G["SausageSalvaGridBtn"..i]
+            if btn then
+                btn:SetAttribute("type1", "spell")
+                btn:SetAttribute("spell1", mySpellName or "")
+            end
+        end
+    end
 end
 UpdateAddonIdentity()
 
@@ -590,16 +601,25 @@ UpdateCombatGrid = function(dt)
             local unitName = btn.unitName or btn.text:GetText()
             
             local inRange = 1
-            if not isTestMode and unit and UnitExists(unit) then
-                if mySpellName then inRange = IsSpellInRange(mySpellName, unit) else inRange = UnitInRange(unit) and 1 or 0 end
-            end
-            if inRange == 0 then btn:SetAlpha(0.4) else btn:SetAlpha(1.0) end
+            local isOffline = not isTestMode and unit and not UnitIsConnected(unit)
+            
+            if isOffline then
+                btn:SetAlpha(0.2)
+                btn.bg:SetVertexColor(0.05, 0.05, 0.05, 0.9)
+                btn.threatText:SetText("|cFF888888OFF|r")
+                btn.warnLeft:Hide(); btn.warnRight:Hide()
+                btn.pingHighlight:Hide(); btn.pingIcon:Hide(); btn.icon:Hide()
+            else
+                if not isTestMode and unit and UnitExists(unit) then
+                    if mySpellName then inRange = IsSpellInRange(mySpellName, unit) else inRange = UnitInRange(unit) and 1 or 0 end
+                end
+                if inRange == 0 then btn:SetAlpha(0.4) else btn:SetAlpha(1.0) end
 
-            local threatPct = 0
-            if isTestMode then threatPct = (i * 7) % 135 elseif unit and UnitExists(unit) then local _, _, pct = UnitDetailedThreatSituation(unit, "target"); threatPct = pct or 0 end
-            btn.threatText:SetText(string.format("%d%%", threatPct))
+                local threatPct = 0
+                if isTestMode then threatPct = (i * 7) % 135 elseif unit and UnitExists(unit) then local _, _, pct = UnitDetailedThreatSituation(unit, "target"); threatPct = pct or 0 end
+                btn.threatText:SetText(string.format("%d%%", threatPct))
 
-            local threshold = 90
+                local threshold = 90
             if not isTestMode and unit then local _, class = UnitClass(unit); threshold = (class == "MAGE" or class == "WARLOCK" or class == "PRIEST") and 110 or 90 end
             local isTestFocus = isTestMode and (i == 5)
             
@@ -666,7 +686,7 @@ UpdateCombatGrid = function(dt)
                     btn.warnLeft:Show(); btn.warnRight:Show()
                     
                     -- ZAHRAJ ZVUK (LEN PRE RL), ak prave prekrocil threshold
-                    if IsRaidLeader() and not btn.threatSoundWarned then
+                    if IsRaidLeader() and not btn.threatSoundWarned and SausageSalvaDB.enableSound then
                         PlaySoundFile(THREAT_SOUND, "Master")
                         btn.threatSoundWarned = true
                     end
@@ -682,6 +702,7 @@ UpdateCombatGrid = function(dt)
             end
         end
     end
+end
 end
 
 -- [[ UPDATE / GITHUB CUSTOM FRAME ]]
@@ -1053,6 +1074,7 @@ EventFrame:SetScript("OnEvent", function(self, event, ...)
         inCombat = true; if SausageSalvaDB and SausageSalvaDB.autoHide then MainFrame:Show() end
     elseif event == "PLAYER_REGEN_ENABLED" then
         inCombat = false; focusTarget, focusTargetClass = nil, nil; if SausageSalvaDB and SausageSalvaDB.autoHide then MainFrame:Hide() end; SausageSalvaMainFrame_UpdateGrid() 
+        UpdateAddonIdentity() -- Poistenie synchronizácie atribútov po boji
     elseif event == "SPELL_UPDATE_COOLDOWN" then
         BroadcastStatus()
     elseif event == "CHAT_MSG_ADDON" then
