@@ -35,6 +35,6 @@ jobs:
           files: SausageThreat.zip
           name: Release ${{ github.ref_name }}
           draft: false
-          prerelease: true
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
