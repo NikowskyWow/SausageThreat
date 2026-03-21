@@ -1452,9 +1452,30 @@ EventFrame:SetScript("OnEvent", function(self, event, ...)
             elseif cmd == "REQ_IGNORE" then
                 if IsRaidLeader() or IsRaidOfficer() or (not IsInRaid() and IsInGroup()) then
                     for _, c in ipairs({"PALA", "HUNT", "ROGUE", "MASTER"}) do
-                        local csv = ""; for name, shown in pairs(SausageThreatDB[(c == "PALA" and "showListPala") or (c == "HUNT" and "showListHunt") or (c == "ROGUE" and "showListRogue") or (c == "MASTER" and "showListMaster")]) do if shown then csv = csv .. name .. "," end end
+                        local listKey = (c == "PALA" and "showListPala") or (c == "HUNT" and "showListHunt") or (c == "ROGUE" and "showListRogue") or (c == "MASTER" and "showListMaster")
+                        local csv = ""; for name, shown in pairs(SausageThreatDB[listKey] or {}) do if shown then csv = csv .. name .. "," end end
                         if csv ~= "" then SendComm("SYNC_LIST:"..c..":"..csv) end
                     end
+                    
+                    local rolesCsv = ""
+                    if SausageThreatDB.assignedRoles then
+                        for name, role in pairs(SausageThreatDB.assignedRoles) do
+                            if string.len(rolesCsv) > 200 then SendComm("SYNC_ROLES:"..rolesCsv); rolesCsv = "" end
+                            rolesCsv = rolesCsv .. name .. "=" .. role .. ","
+                        end
+                        if rolesCsv ~= "" then SendComm("SYNC_ROLES:"..rolesCsv) end
+                    end
+                end
+            elseif cmd == "SYNC_ROLES" then
+                if args[2] then
+                    SausageThreatDB.assignedRoles = SausageThreatDB.assignedRoles or {}
+                    for _, pair in ipairs({strsplit(",", args[2])}) do
+                        if pair and pair ~= "" then
+                            local n, r = strsplit("=", pair)
+                            if n and r then SausageThreatDB.assignedRoles[n] = r end
+                        end
+                    end
+                    if not InCombatLockdown() then SausageThreatMainFrame_UpdateGrid() end
                 end
             elseif cmd == "ANNOUNCE" then
                 if sender == UnitName("player") then return end
